@@ -1,33 +1,60 @@
 ---
 name: 02 Azure Landing Zones Continuous Delivery
+
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
     inputs:
       terraform_action:
-        description: 'Terraform Action to perform'
+        description: "Terraform Action to perform"
         required: true
-        default: 'apply'
+        default: "apply"
         type: choice
         options:
-          - 'apply'
-          - 'destroy'
+          - "apply"
+          - "destroy"
       terraform_cli_version:
-        description: 'Terraform CLI Version'
+        description: "Terraform CLI Version"
         required: true
-        default: 'latest'
+        default: "latest"
         type: string
+
 
 jobs:
   plan_and_apply:
+    # SAFE MODE:
+    # - Push → only applies
+    # - Destroy requires manual workflow_dispatch
+    if: >
+      github.event_name == 'push' && 'apply' ||
+      github.event_name == 'workflow_dispatch'
+
+    name: "CD"
     uses: 6eye-solutions/alz-mgmt-templates/.github/workflows/cd-template.yaml@main
-    name: 'CD'
+
     permissions:
       id-token: write
       contents: read
+
     with:
-      terraform_action: ${{ inputs.terraform_action }}
+      terraform_action: >
+        ${{
+          github.event_name == 'workflow_dispatch'
+          && inputs.terraform_action
+          || 'apply'
+        }}
       root_module_folder_relative_path: '.'
-      terraform_cli_version: ${{ inputs.terraform_cli_version }}
+      terraform_cli_version: >
+        ${{
+          github.event_name == 'workflow_dispatch'
+          && inputs.terraform_cli_version
+          || 'latest'
+        }}
+
+    concurrency:
+      # avoid concurrency blocking between apply/destroy
+      group: ${{ github.ref }}-${{ github.event_name }}-${{ inputs.terraform_action || 'apply' }}
+      cancel-in-progress: false
